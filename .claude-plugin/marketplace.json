@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "goal-hook-marketplace",
+  "description": "Local marketplace for the goal-hook plugin.",
+  "owner": {
+    "name": "hellowind"
+  },
+  "plugins": [
+    {
+      "name": "goal-hook",
+      "source": "./",
+      "description": "通用 goal Stop hook 插件 —— 防止 /goal 任务因内置 prompt hook JSON 校验失败而意外中断。",
+      "version": "1.0.2",
+      "strict": false
+    }
+  ]
+}

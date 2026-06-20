@@ -26,8 +26,33 @@ If a `/goal` session crashes before writing `terminated`, the stale `in_progress
 
 ## Installation
 
-1. Copy this plugin to your Claude Code plugins directory
-2. Enable it in `~/.claude/settings.json`:
+**Method 1: Local Marketplace (recommended)**
+
+```bash
+git clone https://github.com/hellowind777/goal-hook.git D:/GitHub/dev/plugin/goal-hook
+```
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "enabledPlugins": {
+    "goal-hook@goal-hook-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "goal-hook-marketplace": {
+      "source": {
+        "path": "D:\\GitHub\\dev\\plugin\\goal-hook",
+        "source": "directory"
+      }
+    }
+  }
+}
+```
+
+**Method 2: Manual Copy**
+
+Copy the plugin directory to `~/.claude/plugins/goal-hook/`, then enable:
 
 ```json
 {
@@ -37,7 +62,7 @@ If a `/goal` session crashes before writing `terminated`, the stale `in_progress
 }
 ```
 
-3. Restart Claude Code
+Restart Claude Code after either method.
 
 ## Usage
 
