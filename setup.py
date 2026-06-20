@@ -16,7 +16,13 @@ if not os.path.exists(SETTINGS_PATH):
 print(f"[1/3] Installing to {PLUGIN_DEST} ...")
 os.makedirs(os.path.dirname(PLUGIN_DEST), exist_ok=True)
 if os.path.exists(PLUGIN_DEST):
-    shutil.rmtree(PLUGIN_DEST, ignore_errors=True)
+    try:
+        shutil.rmtree(PLUGIN_DEST)
+    except OSError:
+        # Junction or permission issue — try cmd rmdir
+        os.system(f'cmd /c "rmdir /s /q {PLUGIN_DEST}" 2>nul')
+        if os.path.exists(PLUGIN_DEST):
+            shutil.rmtree(PLUGIN_DEST, ignore_errors=True)
 shutil.copytree(PLUGIN_DIR, PLUGIN_DEST,
                 ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", ".gitignore"))
 
