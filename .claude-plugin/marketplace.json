@@ -10,7 +10,7 @@
       "name": "goal-hook",
       "source": "./plugins/goal-hook",
       "description": "通用 goal Stop hook 插件 —— 防止 /goal 任务因内置 prompt hook JSON 校验失败而意外中断。",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "strict": false
     }
   ]
