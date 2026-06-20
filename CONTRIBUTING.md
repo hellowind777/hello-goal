@@ -1,35 +1,50 @@
-# Contributing
+# 参与贡献 goal-hook
 
-## Development
+欢迎贡献！本文档说明如何参与贡献。
 
-```bash
-git clone <repo-url>
-cd goal-hook
-```
+## 文档
 
-The plugin consists of three files:
+- [项目文档](./README.md)
+- [中文文档](./README_CN.md)
+- [许可证](./LICENSE)
 
-| File | Purpose |
-|------|---------|
-| `.claude-plugin/plugin.json` | Plugin metadata |
-| `hooks/hooks.json` | Hook registration |
-| `scripts/_goal_check.py` | Status file checker |
+## 如何贡献
 
-## Testing
+### 报告问题
 
-Install the plugin locally and run a `/goal` session with a GOAL_PROMPT that writes `in_progress` / `terminated`.
+- **Bug 报告**：创建 issue 并附上复现步骤
+- **功能建议**：先发起讨论
 
-Verify:
-1. Non-`/goal` sessions are unaffected (no file → pass)
-2. `/goal` with `in_progress` blocks on Stop
-3. `/goal` with `terminated` passes on Stop + cleans up file
-4. Stale `in_progress` (>7 days) auto-expires
+### 提交变更
 
-## Commit Convention
+1. Fork 本仓库
+2. 创建功能分支（`git checkout -b feature/amazing-feature`）
+3. 进行修改
+4. 运行测试（如适用）
+5. 提交变更（`git commit -m 'feat: add amazing feature'`）
+6. 推送到分支（`git push origin feature/amazing-feature`）
+7. 创建 Pull Request
 
-```
-feat: description
-fix: description
-refactor: description
-revert: description
-```
+### 提交信息格式
+
+使用[约定式提交](https://www.conventionalcommits.org/)：
+
+- `feat:` 新功能
+- `fix:` Bug 修复
+- `docs:` 仅文档
+- `chore:` 维护
+- `refactor:` 代码重构
+
+### 代码风格
+
+- Python 脚本遵循现有代码模式
+- JSON 使用 2 空格缩进
+- 为复杂逻辑添加注释
+
+## 有疑问？
+
+欢迎创建 issue 或发起讨论。
+
+---
+
+本仓库采用 [Apache-2.0 许可证](./LICENSE)。
