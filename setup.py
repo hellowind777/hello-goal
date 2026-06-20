@@ -26,9 +26,15 @@ if os.path.exists(PLUGIN_DEST):
 shutil.copytree(PLUGIN_DIR, PLUGIN_DEST,
                 ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", ".gitignore"))
 
-# Step 2: Copy marketplace.json
-shutil.copy2(os.path.join(PLUGIN_DIR, ".claude-plugin", "marketplace.json"),
-             os.path.join(MKT_DIR, ".claude-plugin", "marketplace.json"))
+# Step 2: Write marketplace.json with correct relative path for CC plugins directory
+# (repo has source:"." for standalone use; CC plugins dir needs source:"./plugins/goal-hook")
+os.makedirs(os.path.join(MKT_DIR, ".claude-plugin"), exist_ok=True)
+with open(os.path.join(PLUGIN_DIR, ".claude-plugin", "marketplace.json"), "r", encoding="utf-8") as f:
+    mkt = json.load(f)
+for p in mkt["plugins"]:
+    p["source"] = "./plugins/goal-hook"
+with open(os.path.join(MKT_DIR, ".claude-plugin", "marketplace.json"), "w", encoding="utf-8") as f:
+    json.dump(mkt, f, indent=2, ensure_ascii=False)
 
 # Step 3: Register in settings.json
 print("[2/3] Registering in settings.json ...")
