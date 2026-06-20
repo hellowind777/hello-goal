@@ -1,6 +1,6 @@
 {
   "name": "goal-hook",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "通用 goal Stop hook 插件 —— 与任何 GOAL_PROMPT 解耦，阻止会话在目标未达成时提前停止。基于 .goal_status.json 状态文件判断。",
   "author": {
     "name": "hellowind"
