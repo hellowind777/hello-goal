@@ -1,5 +1,55 @@
 # Release Notes / 发布记录
 
+## v2.0.3 (2026-06-21)
+
+### 插件改名 + API 错误自动恢复
+
+对比 v2.0.1 的实质性变更：
+
+**插件全面改名：**
+
+- **goal-hook → hello-goal** —— 插件目录、配置文件、脚本、文档、市场清单全量重命名，仓库 URL 同步更新为 `https://github.com/hellowind777/hello-goal`。
+- 所有内部标识符、错误消息前缀、状态文件名统一使用新名称。
+- setup.py 安装路径适配新名称。
+
+**API 错误自动恢复 (Phase 1.5)：**
+
+- 新增第三方大模型 API 错误模式匹配层，在 Phase 1（中断恢复）和 Phase 2（行为结构评分）之间插入。
+- 覆盖 10 种常见 API 异常模式：socket close、429/503/502/504、rate limit、overloaded、connection reset/timeout/refused、fetch failed、network error。
+- 三源检测：stop_reason 字段 → assistant 消息文本 → transcript 尾部 system 错误字段。
+- 检测到 API 错误后自动 BLOCK，/goal 无需人工干预即可恢复继续。
+
+**守护层级更新：**
+
+- 原"三层级联"扩展为"四层级联"：Phase 0 (/goal 检测) → Phase 1 (中断恢复) → Phase 1.5 (API 错误恢复) → Phase 2 (行为评分) → Phase 3 (LLM 语义) → Phase 4 (循环防护)。
+- `_goal_guard.py` 新增 `_match_api_error()` 和 `_detect_api_error()` 函数，零额外依赖。
+
+---
+
+### Plugin Rename + API Error Auto-Recovery
+
+Substantive changes compared to v2.0.1:
+
+**Complete plugin rename:**
+
+- **goal-hook → hello-goal** — Full rename of plugin directory, configs, scripts, docs, and marketplace manifest. Repository URL updated to `https://github.com/hellowind777/hello-goal`.
+- All internal identifiers, error message prefixes, and state file names use the new name.
+- setup.py installation paths adapted.
+
+**API error auto-recovery (Phase 1.5):**
+
+- New third-party LLM API error pattern matching layer, inserted between Phase 1 (interruption recovery) and Phase 2 (structural scoring).
+- Covers 10 common API error patterns: socket close, 429/503/502/504, rate limit, overloaded, connection reset/timeout/refused, fetch failed, network error.
+- Three-source detection: stop_reason field → assistant message text → transcript tail system error fields.
+- Auto-BLOCK on API error detection, /goal resumes without manual intervention.
+
+**Guard layer update:**
+
+- "Three-layer cascade" expanded to "four-layer cascade": Phase 0 (/goal detection) → Phase 1 (interruption recovery) → Phase 1.5 (API error recovery) → Phase 2 (structural scoring) → Phase 3 (LLM semantic) → Phase 4 (loop protection).
+- `_goal_guard.py` adds `_match_api_error()` and `_detect_api_error()` functions, zero additional dependencies.
+
+---
+
 ## v2.0.1 (2026-06-21)
 
 ### 架构全面重构 —— Hybrid Guardian
@@ -80,7 +130,7 @@ Comprehensive rewrite from "passive file state checker" to "active hybrid guardi
 
 ### 标准 CC Marketplace 目录结构
 
-- 重构仓库为标准 Claude Code marketplace 布局：`plugins/goal-hook/`
+- 重构仓库为标准 Claude Code marketplace 布局：`plugins/hello-goal/`
 - 移除 `setup.bat` 和 `setup.ps1`，`setup.py` 为唯一安装脚本
 
 ---

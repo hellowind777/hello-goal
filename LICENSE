@@ -15,7 +15,7 @@ Commercial use is allowed. You must retain **LICENSE** and **NOTICE** informatio
 Include a `NOTICE` in your distribution:
 
 ```
-This product includes "goal-hook" (author: Hellowind, https://github.com/hellowind777/goal-hook), licensed under the Apache License 2.0.
+This product includes "hello-goal" (author: Hellowind, https://github.com/hellowind777/hello-goal), licensed under the Apache License 2.0.
 ```
 
 ### 2. Documentation — CC BY 4.0
@@ -27,7 +27,7 @@ Commercial use is allowed, but **attribution is required**. Provide a license li
 Suggested attribution when reusing documentation:
 
 ```
-Text/graphics adapted from "goal-hook" — © 2025 Hellowind (https://github.com/hellowind777/goal-hook), CC BY 4.0.
+Text/graphics adapted from "hello-goal" — © 2025 Hellowind (https://github.com/hellowind777/hello-goal), CC BY 4.0.
 ```
 
 ## Unified Attribution
@@ -35,7 +35,7 @@ Text/graphics adapted from "goal-hook" — © 2025 Hellowind (https://github.com
 For both code and documentation:
 
 ```
-goal-hook — © 2025 Hellowind (https://github.com/hellowind777/goal-hook). Code: Apache-2.0; Docs: CC BY 4.0.
+hello-goal — © 2025 Hellowind (https://github.com/hellowind777/hello-goal). Code: Apache-2.0; Docs: CC BY 4.0.
 ```
 
 ---
