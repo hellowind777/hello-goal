@@ -1,7 +1,7 @@
 {
-  "name": "goal-hook",
-  "version": "2.0.1",
-  "description": "Hybrid Guardian for /goal tasks —— 行为结构分析 + LLM 语义兜底，语言无关，自动监控 /goal 任务防止非正常终止。三层级联：中断恢复 → 行为信号加权 → LLM 语义确认。",
+  "name": "hello-goal",
+  "version": "2.0.3",
+  "description": "Hybrid Guardian for /goal tasks —— 行为结构分析 + LLM 语义兜底，语言无关，自动监控 /goal 任务防止非正常终止。四层级联：中断恢复 → API 错误容错 → 行为信号加权 → LLM 语义确认。",
   "author": {
     "name": "hellowind"
   },

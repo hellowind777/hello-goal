@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""goal-hook v2.0 — Hybrid Guardian for /goal tasks.
+"""hello-goal v2.0 — Hybrid Guardian for /goal tasks.
 
-三层级联守护:
-  Phase 1: stop_reason 异常 → 直接 BLOCK（中断恢复）
-  Phase 2: 行为结构信号加权 → 明确则直接 BLOCK/PASS
-  Phase 3: LLM 语义兜底 → 仅模糊区间触发（20%-50%）
+四层级联守护:
+  Phase 1:   stop_reason 异常 → 直接 BLOCK（中断恢复）
+  Phase 1.5: API 错误模式匹配 → BLOCK（第三方大模型容错恢复）
+  Phase 2:   行为结构信号加权 → 明确则直接 BLOCK/PASS
+  Phase 3:   LLM 语义兜底 → 仅模糊区间触发（20%-50%）
 
 零外部依赖。语言无关（行为结构分析 + LLM 自然理解任意语言）。
 
@@ -22,7 +23,7 @@ import time
 # ============================================================
 
 PLUGIN_DATA_DIR = os.environ.get("CLAUDE_PLUGIN_DATA", "")
-PLUGIN_NAME = "goal-hook"
+PLUGIN_NAME = "hello-goal"
 STATE_FILE = (
     os.path.join(PLUGIN_DATA_DIR, ".goal_sessions.json")
     if PLUGIN_DATA_DIR else ""
@@ -42,6 +43,21 @@ W_READONLY_STALL = 0.15  # 只读停滞（连续 Read 无 Write）
 BLOCK_THRESHOLD = 0.50   # ≥ 此分数直接 BLOCK，无需 LLM
 PASS_THRESHOLD = 0.20    # < 此分数直接 PASS
 STOP_HOOK_ACTIVE_MULT = 1.4  # 连续 block 时阈值放大
+
+# API 错误模式 —— 第三方大模型常见异常，/goal 模式下自动恢复继续
+_API_ERROR_PATTERNS = [
+    r"socket connection was closed unexpectedly",
+    r"\b429\b",
+    r"\b503\b",
+    r"\b502\b",
+    r"\b504\b",
+    r"rate\s*limit",
+    r"too\s+many\s+requests",
+    r"overloaded(?:_error)?",
+    r"connection\s+(?:reset|refused|timed\s*out|closed)",
+    r"fetch\s*failed",
+    r"network\s+error",
+]
 
 # ============================================================
 # 基础工具
@@ -172,15 +188,43 @@ def _detect_goal_active(transcript_path, session_id):
       B. transcript 中存在最近的 stop_hook_summary（原生 /goal 评估器活动痕迹）
 
     任一命中 → 判定活跃。结果缓存到插件状态文件。
+    每轮先做轻量双向检查（最近条目中的 start/clear），捕获状态切换；
+    无切换时信任缓存；无缓存时全量扫描。
     """
-    # 检查缓存
     state = _load_state()
     ss = state.get(session_id, {})
+
+    # 轻量双向检查：捕获最近的 /goal 启动或退出，处理反复进入/退出
+    recent = _read_transcript_tail(transcript_path, num_entries=15)
+    for entry in recent:
+        if entry.get("type") == "user":
+            msg = entry.get("message", {})
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    text = block.get("text", "") if isinstance(block, dict) else str(block)
+                    if _is_goal_start(text):
+                        ss["goal_detected"] = True
+                        ss["goal_checked"] = True
+                        ss["detected_at"] = time.time()
+                        state[session_id] = ss
+                        _save_state(state)
+                        return True
+                    elif _is_goal_cleared(text):
+                        ss["goal_detected"] = False
+                        ss["goal_checked"] = True
+                        ss["detected_at"] = time.time()
+                        state[session_id] = ss
+                        _save_state(state)
+                        return False
+
+    # 最近条目无状态变更 → 信任缓存
     if ss.get("goal_detected"):
         return True
     if ss.get("goal_checked") and not ss.get("goal_detected"):
         return False
 
+    # 无缓存 → 全量扫描
     entries = _read_transcript_tail(transcript_path, num_entries=120)
 
     goal_started = False
@@ -371,6 +415,67 @@ def _llm_check(last_assistant_message, stop_reason):
 
 
 # ============================================================
+# API 错误检测（第三方大模型 /goal 容错恢复）
+# ============================================================
+
+def _match_api_error(text):
+    """检查文本是否匹配已知 API 错误模式。返回匹配的模式或 None。"""
+    if not isinstance(text, str) or not text:
+        return None
+    for pattern in _API_ERROR_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return pattern
+    return None
+
+
+def _detect_api_error(ctx):
+    """多源检测 API 错误：stop_reason → assistant 消息 → transcript 尾部。
+    返回 (detected: bool, info: str)。
+    """
+    # 源 1: stop_reason 字段
+    sr = ctx.get("stop_reason", "")
+    pat = _match_api_error(sr)
+    if pat:
+        return True, "stop_reason 匹配 " + pat
+
+    # 源 2: last_assistant_message（LLM 可能直接报告了错误）
+    last_msg = ctx.get("last_assistant_message", "")
+    pat = _match_api_error(last_msg)
+    if pat:
+        return True, "assistant 消息匹配 " + pat
+
+    # 源 3: transcript 尾部（系统错误 / assistant 文本 / user 回显）
+    transcript_path = ctx.get("transcript_path", "")
+    entries = _read_transcript_tail(transcript_path, num_entries=20)
+    for entry in entries:
+        etype = entry.get("type", "")
+        msg = entry.get("message", {})
+        content = msg.get("content", []) if isinstance(msg, dict) else []
+
+        texts = []
+        if isinstance(content, list):
+            for block in content:
+                t = block.get("text", "") if isinstance(block, dict) else str(block)
+                if t:
+                    texts.append(t)
+
+        pat = _match_api_error(" ".join(texts))
+        if pat:
+            return True, f"transcript {etype} 匹配 " + pat
+
+        # 也检查 system entry 的 error / reason / detail 字段
+        if etype == "system":
+            for field in ("error", "reason", "detail"):
+                val = entry.get(field, "")
+                if isinstance(val, str):
+                    pat = _match_api_error(val)
+                    if pat:
+                        return True, f"transcript system.{field} 匹配 " + pat
+
+    return False, ""
+
+
+# ============================================================
 # 事件处理
 # ============================================================
 
@@ -389,8 +494,16 @@ def handle_stop(ctx):
     # Phase 1: 中断恢复 —— 非正常结束直接 BLOCK
     if stop_reason != "end_turn":
         return _block(
-            "[goal-hook] 检测到异常中断 (stop_reason=" + stop_reason + ")。"
+            "[hello-goal] 检测到异常中断 (stop_reason=" + stop_reason + ")。"
             "/goal 任务继续执行。"
+        )
+
+    # Phase 1.5: API 错误恢复 —— 第三方大模型常见错误时 /goal 继续
+    api_error, api_info = _detect_api_error(ctx)
+    if api_error:
+        return _block(
+            "[hello-goal] 检测到 API 错误 (" + api_info + ")。"
+            "/goal 任务自动恢复，继续执行。"
         )
 
     # Phase 2: 行为结构评分
@@ -402,7 +515,7 @@ def handle_stop(ctx):
     if score >= threshold:
         flag_str = ", ".join(flags.keys()) if flags else "行为异常"
         return _block(
-            "[goal-hook] 检测到任务可能停滞 (信号: " + flag_str + ")。"
+            "[hello-goal] 检测到任务可能停滞 (信号: " + flag_str + ")。"
             "/goal 任务继续执行。"
         )
 
@@ -414,7 +527,7 @@ def handle_stop(ctx):
 
     if result is True:
         return _block(
-            "[goal-hook] 语义分析检测到任务可能提前终止。"
+            "[hello-goal] 语义分析检测到任务可能提前终止。"
             "/goal 任务继续执行。"
         )
     elif result is False:
@@ -422,7 +535,7 @@ def handle_stop(ctx):
     else:
         # API 不可用 → 保守 BLOCK
         return _block(
-            "[goal-hook] 语义分析不可用，保守策略：/goal 任务继续执行。"
+            "[hello-goal] 语义分析不可用，保守策略：/goal 任务继续执行。"
         )
 
 
