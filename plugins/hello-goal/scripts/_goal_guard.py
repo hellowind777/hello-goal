@@ -183,18 +183,42 @@ def _is_goal_cleared(text):
 def _detect_goal_active(transcript_path, session_id):
     """检测当前会话中 /goal 是否活跃。
 
+    缓存优先策略:
+      1. 已知非 /goal 会话 → 直接返回 False，零 transcript 读取
+      2. 已知 /goal 会话 → 轻量检查最近条目中的 clear 命令
+      3. 无缓存 → 全量扫描（仅首次或 PostCompact 后触发）
+
     双信号交叉验证:
       A. transcript 中找到 /goal 启动命令
       B. transcript 中存在最近的 stop_hook_summary（原生 /goal 评估器活动痕迹）
-
-    任一命中 → 判定活跃。结果缓存到插件状态文件。
-    每轮先做轻量双向检查（最近条目中的 start/clear），捕获状态切换；
-    无切换时信任缓存；无缓存时全量扫描。
     """
     state = _load_state()
     ss = state.get(session_id, {})
 
-    # 轻量双向检查：捕获最近的 /goal 启动或退出，处理反复进入/退出
+    # Phase 1: 缓存快速路径 —— 已确认非 /goal 会话，直接返回
+    if ss.get("goal_checked") and not ss.get("goal_detected"):
+        return False
+
+    # Phase 2: 已知 /goal 活跃 → 轻量检查用户是否发出了 clear/stop
+    if ss.get("goal_detected"):
+        recent = _read_transcript_tail(transcript_path, num_entries=15)
+        for entry in recent:
+            if entry.get("type") == "user":
+                msg = entry.get("message", {})
+                content = msg.get("content", [])
+                if isinstance(content, list):
+                    for block in content:
+                        text = block.get("text", "") if isinstance(block, dict) else str(block)
+                        if _is_goal_cleared(text):
+                            ss["goal_detected"] = False
+                            ss["goal_checked"] = True
+                            ss["detected_at"] = time.time()
+                            state[session_id] = ss
+                            _save_state(state)
+                            return False
+        return True
+
+    # Phase 3: 无缓存 → 首次检测，先轻量后全量
     recent = _read_transcript_tail(transcript_path, num_entries=15)
     for entry in recent:
         if entry.get("type") == "user":
@@ -218,13 +242,7 @@ def _detect_goal_active(transcript_path, session_id):
                         _save_state(state)
                         return False
 
-    # 最近条目无状态变更 → 信任缓存
-    if ss.get("goal_detected"):
-        return True
-    if ss.get("goal_checked") and not ss.get("goal_detected"):
-        return False
-
-    # 无缓存 → 全量扫描
+    # 轻量未命中 → 全量扫描
     entries = _read_transcript_tail(transcript_path, num_entries=120)
 
     goal_started = False
@@ -234,7 +252,6 @@ def _detect_goal_active(transcript_path, session_id):
     for entry in entries:
         etype = entry.get("type", "")
 
-        # 信号 A: /goal 命令
         if etype == "user":
             msg = entry.get("message", {})
             content = msg.get("content", [])
@@ -247,15 +264,17 @@ def _detect_goal_active(transcript_path, session_id):
                     elif _is_goal_cleared(text):
                         goal_cleared = True
 
-        # 信号 B: stop_hook_summary（原生 /goal 评估器产物）
         if etype == "system":
             subtype = entry.get("subtype", "")
             if subtype == "stop_hook_summary":
                 has_recent_summary = True
 
-    is_active = (goal_started and not goal_cleared) or has_recent_summary
+    # has_recent_summary 仅作确认信号，不独立触发 ——
+    # 避免 CC 在非 /goal 会话中也生成 stop_hook_summary 导致误判
+    is_active = (goal_started and not goal_cleared) or (
+        goal_started and has_recent_summary
+    )
 
-    # 缓存
     ss["goal_checked"] = True
     ss["goal_detected"] = is_active
     ss["detected_at"] = time.time()
@@ -491,6 +510,23 @@ def handle_stop(ctx):
     if not _detect_goal_active(transcript_path, session_id):
         return _pass()
 
+    # 熔断器: 连续 block ≥ 5 次 → 强制 pass，打破无限循环
+    state = _load_state()
+    ss = state.get(session_id, {})
+    consecutive_blocks = ss.get("consecutive_blocks", 0)
+    if stop_hook_active:
+        consecutive_blocks += 1
+    else:
+        consecutive_blocks = 0
+    if consecutive_blocks >= 5:
+        ss["consecutive_blocks"] = 0
+        state[session_id] = ss
+        _save_state(state)
+        return _pass()
+    ss["consecutive_blocks"] = consecutive_blocks
+    state[session_id] = ss
+    _save_state(state)
+
     # Phase 1: 中断恢复 —— 非正常结束直接 BLOCK
     if stop_reason != "end_turn":
         return _block(
@@ -567,9 +603,10 @@ def handle_post_compact(ctx):
     session_id = ctx.get("session_id", "")
     state = _load_state()
     ss = state.get(session_id, {})
-    # 清除检测缓存，下次 Stop hook 重新检测
+    # 清除检测缓存和熔断计数，下次 Stop hook 重新检测
     ss.pop("goal_checked", None)
     ss.pop("goal_detected", None)
+    ss.pop("consecutive_blocks", None)
     state[session_id] = ss
     _save_state(state)
     return _pass()
