@@ -505,7 +505,12 @@ def _llm_check(last_assistant_message, stop_reason):
             b.get("text", "") for b in result.get("content", [])
             if isinstance(b, dict) and b.get("type") == "text"
         )
-        return "BLOCK" in text.upper()
+        clean = text.upper().strip()
+        if clean.startswith("BLOCK"):
+            return True
+        if clean.startswith("PASS"):
+            return False
+        return None  # 无法解析 → 保守 BLOCK
 
     except Exception:
         return None
