@@ -259,48 +259,86 @@ def _detect_goal_active(transcript_path, session_id):
       B. 用户 /goal 命令解析 —— 备用
       C. stop_hook_summary 条目 —— 仅确认，不独立触发
 
-    缓存优先，非 /goal 会话零 transcript 读取。
+    正确处理同一会话反复进出 /goal 的场景：
+      - Goal cleared → 新 Goal set → 仍活跃（时间序判定）
+      - 意外中断（stop_reason 异常）→ 由 handle_stop Phase 1 拦截
+      - 人工 /goal clear → CC 生成 Goal cleared: → 本函数返回 False
+      - 模型偷懒降级 → 由 handle_stop Phase 2/3 行为评分+LLM 拦截
     """
     state = _load_state()
     ss = state.get(session_id, {})
 
-    # Phase 1: 缓存快速路径 —— 已确认非 /goal 会话，零 IO 直接返回
+    # Phase 1: 缓存快速路径 —— 已知非 /goal，但需快速复查防重新进入
     if ss.get("goal_checked") and not ss.get("goal_detected"):
-        return False
-
-    # Phase 2: 已知 /goal 活跃 → 轻量检查是否已清除
-    if ss.get("goal_detected"):
-        recent = _read_transcript_tail(transcript_path, num_entries=20)
+        recent = _read_transcript_tail(transcript_path, num_entries=5)
         for entry in recent:
             etext = _extract_text(entry)
-            if _has_goal_cleared_marker(etext):
-                ss["goal_detected"] = False
-                ss["goal_checked"] = True
-                ss["detected_at"] = time.time()
+            if _has_goal_set_marker(etext) or (
+                entry.get("type") == "user" and _is_goal_start(etext)
+            ):
+                # 检测到重新进入 /goal → 清除缓存，进入 Phase 3 完整检测
+                ss.pop("goal_checked", None)
                 state[session_id] = ss
                 _save_state(state)
-                return False
-            # 也检查用户 clear 命令
-            if entry.get("type") == "user" and _is_goal_cleared(etext):
-                ss["goal_detected"] = False
-                ss["goal_checked"] = True
-                ss["detected_at"] = time.time()
-                state[session_id] = ss
-                _save_state(state)
-                return False
-        return True
+                break
+        else:
+            return False
 
-    # Phase 3: 无缓存 → 先轻量扫描（20条），未命中再全量扫描（150条）
+    # Phase 2: 已知 /goal 活跃 → 时间序判定 set vs clear
+    if ss.get("goal_detected"):
+        recent = _read_transcript_tail(transcript_path, num_entries=20)
+        last_set = -1
+        last_clear = -1
+        for i, entry in enumerate(recent):
+            etext = _extract_text(entry)
+            if _has_goal_set_marker(etext):
+                last_set = i
+            if _has_goal_cleared_marker(etext):
+                last_clear = i
+            if entry.get("type") == "user":
+                if _is_goal_start(etext):
+                    last_set = i
+                elif _is_goal_cleared(etext):
+                    last_clear = i
+
+        # 最后出现的标记决定状态
+        if last_clear >= 0 and last_clear > last_set:
+            # Clear 是最后动作 → goal 已结束
+            ss["goal_detected"] = False
+            ss["goal_checked"] = True
+            ss["detected_at"] = time.time()
+            state[session_id] = ss
+            _save_state(state)
+            return False
+
+        if last_set >= 0 and last_set >= last_clear:
+            # Set 是最后动作（或与 clear 同位但 set 优先）→ 仍活跃
+            return True
+
+        # 无 set/clear 标记 → 检查原生评估器是否仍在运行
+        has_summary = any(
+            e.get("type") == "system" and e.get("subtype") == "stop_hook_summary"
+            for e in recent
+        )
+        if not has_summary:
+            # 无任何活跃证据 → 清除粘性状态，进入 Phase 3 重新检测
+            ss.pop("goal_detected", None)
+            ss.pop("goal_checked", None)
+            state[session_id] = ss
+            _save_state(state)
+            # fall through to Phase 3
+        else:
+            return True
+
+    # Phase 3: 无缓存（首次检测 / PostCompact / 状态失效）→ 先轻量后全量
     recent = _read_transcript_tail(transcript_path, num_entries=20)
     gs, gc, gcmd, gclr, hss = _scan_for_goal_markers(recent)
 
-    # 轻量命中 → 直接返回
     if gs and not gc:
         is_active = True
     elif gcmd and not gclr:
         is_active = True
     elif not gs and not gcmd:
-        # 轻量未命中 → 全量扫描
         entries = _read_transcript_tail(transcript_path, num_entries=150)
         gs, gc, gcmd, gclr, hss = _scan_for_goal_markers(entries)
 
@@ -309,14 +347,12 @@ def _detect_goal_active(transcript_path, session_id):
         elif gcmd and not gclr:
             is_active = True
         elif hss and (gs or gcmd or ss.get("goal_detected")):
-            # stop_hook_summary 仅作确认信号 —— 配合 CC 原生标记或先验知识
             is_active = True
         else:
             is_active = False
     else:
         is_active = False
 
-    # 缓存结果
     ss["goal_checked"] = True
     ss["goal_detected"] = is_active
     ss["detected_at"] = time.time()
