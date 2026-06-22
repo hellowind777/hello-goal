@@ -10,7 +10,7 @@
       "name": "hello-goal",
       "source": "./plugins/hello-goal",
       "description": "/goal 混合守护插件 —— 三层级联防止 /goal 任务非正常终止：中断恢复 + API 错误容错 + 行为信号+LLM 语义分析统一混合判定。",
-      "version": "2.1.1",
+      "version": "2.1.2",
       "strict": false
     }
   ]

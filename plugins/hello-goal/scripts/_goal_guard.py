@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hello-goal v2.1.1 — Hybrid Guardian for /goal tasks.
+"""hello-goal v2.1.2 — Hybrid Guardian for /goal tasks.
 
 三层级联守护:
   Phase 1:   stop_reason 异常 → 直接 BLOCK（中断恢复）
@@ -704,10 +704,15 @@ DISPATCH = {
 
 def main():
     _setup_encoding()
-    ctx = _read_stdin()
-    event = ctx.get("hook_event_name", "")
-    handler = DISPATCH.get(event, lambda c: _pass())
-    handler(ctx)
+    try:
+        ctx = _read_stdin()
+        event = ctx.get("hook_event_name", "")
+        handler = DISPATCH.get(event, lambda c: _pass())
+        handler(ctx)
+    except Exception:
+        _block(
+            "[hello-goal] 内部异常，保守策略：/goal 任务继续执行。"
+        )
 
 
 if __name__ == "__main__":

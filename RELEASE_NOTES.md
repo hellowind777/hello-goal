@@ -1,5 +1,49 @@
 # Release Notes / 发布记录
 
+## v2.1.2 (2026-06-22)
+
+### Stop Hook 全局异常兜底 —— 杜绝 JSON 验证失败导致 /goal 循环中断
+
+对比 v2.1.1 的实质性变更：
+
+**Stop Hook 全局异常兜底：**
+
+- `_goal_guard.py` 的 `main()` 新增 `try/except Exception` 全局异常捕获。任何未预期的内部异常（文件并发竞争、磁盘 I/O 错误、状态文件损坏等边缘场景）不再输出 Python traceback 到 stdout，而是输出合法的 `{"decision": "block", "reason": "..."}` JSON，确保 CC hook runner 始终能正确解析。
+- 根本解决"Stop hook error: JSON validation failed"导致 `/goal` 循环意外中断的问题——即使脚本内部发生极端错误，保守策略也会 BLOCK 让 /goal 继续执行而非误 PASS 终止。
+
+**版本号与架构图同步：**
+
+- `01-hero-banner.svg`、`architecture.svg` 版本号从 v2.0.3 更新为 v2.1.2，与代码版本一致。
+- `architecture.svg` 删除已废弃的 `≥50% → BLOCK` 硬阈值和 Phase 4 熔断器描述，更新为 v2.1 统一混合判定模型（score ≥ 0.20 → LLM 语义分析）。
+
+**清理：**
+
+- 删除过期的 `COMMIT_MESSAGE.md` 和源码 `__pycache__/` 缓存。
+- 修复 git 分支上游追踪丢失的问题。
+
+---
+
+### Stop Hook Global Exception Guard —— Eliminate JSON Validation Failures Breaking /goal Loops
+
+Substantive changes compared to v2.1.1:
+
+**Stop Hook Global Exception Guard:**
+
+- `_goal_guard.py` `main()` now wraps all handler execution in `try/except Exception`. Any unexpected internal exception (file race conditions, disk I/O errors, state file corruption, and other edge cases) no longer outputs a Python traceback to stdout — instead it outputs valid `{"decision": "block", "reason": "..."}` JSON that the CC hook runner can always parse correctly.
+- Fundamentally fixes the "Stop hook error: JSON validation failed" issue that would unexpectedly break the `/goal` loop. Even in extreme internal error scenarios, the conservative strategy BLOCKs to keep /goal running rather than incorrectly PASSing and terminating.
+
+**Version & Architecture Diagram Sync:**
+
+- `01-hero-banner.svg` and `architecture.svg` version labels updated from v2.0.3 to v2.1.2, matching the code version.
+- `architecture.svg` removes deprecated `≥50% → BLOCK` hard threshold and Phase 4 circuit breaker descriptions, updated to the v2.1 unified hybrid decision model (score ≥ 0.20 → LLM semantic analysis).
+
+**Cleanup:**
+
+- Removed stale `COMMIT_MESSAGE.md` and source `__pycache__/` cache.
+- Fixed broken git branch upstream tracking.
+
+---
+
 ## v2.1.1 (2026-06-21)
 
 ### Goal 检测重写 + 统一混合判定 + 非 /goal 会话零误判

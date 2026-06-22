@@ -2,11 +2,11 @@
   <img src="./readme_images/01-hero-banner.svg" alt="hello-goal" width="800">
 </div>
 
-# hello-goal v2.1.1
+# hello-goal v2.1.2
 
 混合守护插件 —— `/goal` 任务自动监控，防止非正常终止。行为结构分析 + LLM 语义分析统一混合判定 + API 错误自动恢复。语言无关，零提示词侵入。
 
-[![Version](https://img.shields.io/badge/version-2.1.1-orange.svg)](./RELEASE_NOTES.md)
+[![Version](https://img.shields.io/badge/version-2.1.2-orange.svg)](./RELEASE_NOTES.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![LINUX DO](https://img.shields.io/badge/LINUX_DO-recognized-0A84FF?logo=linux&logoColor=white)](https://linux.do)
 
@@ -40,7 +40,7 @@ Claude Code 的 `/goal` 功能在长任务中有三类典型失败模式：
 2. **主动放弃** —— 模型因疲劳、上下文过长、信心丧失而提前想结束
 3. **标准降级** —— 模型悄悄降低完成标准（"差不多了"、"基本可以了"）
 
-**hello-goal v2.1.1** 以单一 command-type Stop hook 实现三层级联守护，自动检测并阻止上述非正常终止，让 `/goal` 循环持续到任务真正完成。
+**hello-goal v2.1.2** 以单一 command-type Stop hook 实现三层级联守护，自动检测并阻止上述非正常终止，让 `/goal` 循环持续到任务真正完成。
 
 ### v2.1 vs v2.0
 
@@ -64,7 +64,7 @@ Claude Code 的 `/goal` 功能在长任务中有三类典型失败模式：
 
 ## 解决了什么问题
 
-| 场景 | 无 hello-goal | 有 hello-goal v2.1.1 |
+| 场景 | 无 hello-goal | 有 hello-goal v2.1.2 |
 |------|-------------|------------------|
 | `/goal` 中 hook 报错中断 | 会话终止 | 检测 stop_reason 异常 → BLOCK 继续 |
 | 第三方 API 错误（429/503 等） | `/goal` 循环中断 | 模式匹配 → 自动恢复 BLOCK |
@@ -103,13 +103,14 @@ Stop Hook 触发
           ├─ 区分任务正常收尾与提前放弃
           ├─ BLOCK → 继续    PASS → 放行
           └─ API 不可用 → 保守 BLOCK
+  └─ 全局异常兜底（v2.1.2）：未预期内部异常 → 输出合法 BLOCK，循环不中断
 ```
 
 ### 为什么不用关键词/正则
 
 世界上有 200+ 种语言，模型可以用任意语言表达"放弃"。关键词正则既不可穷举也不可维护。
 
-v2.1.1 的行为分析**不读文字内容**——只对 transcript 中的工具调用模式、消息长度趋势、轮次结构打分。这些信号在任何语言中完全相同。LLM 语义分析对所有可疑轮次做最终裁决，天然理解任意语言。
+v2.1.2 的行为分析**不读文字内容**——只对 transcript 中的工具调用模式、消息长度趋势、轮次结构打分。这些信号在任何语言中完全相同。LLM 语义分析对所有可疑轮次做最终裁决，天然理解任意语言。
 
 ## 快速开始
 
@@ -206,7 +207,7 @@ scripts/_goal_guard.py (~700 行, 零依赖)
 |------|------|
 | `plugins/hello-goal/hooks/hooks.json` | 三钩子注册（Stop + SessionStart + PostCompact） |
 | `plugins/hello-goal/scripts/_goal_guard.py` | 混合守护主脚本 |
-| `plugins/hello-goal/.claude-plugin/plugin.json` | 插件元数据（v2.1.1） |
+| `plugins/hello-goal/.claude-plugin/plugin.json` | 插件元数据（v2.1.2） |
 | `.claude-plugin/marketplace.json` | 市场清单 |
 | `setup.py` | 一键跨平台安装脚本 |
 
@@ -221,7 +222,7 @@ scripts/_goal_guard.py (~700 行, 零依赖)
 <details>
 <summary><strong>Q: 需要修改提示词吗？</strong></summary>
 
-**A:** 不需要。v2.1.1 通过 CC 原生标记从 transcript 自动检测 /goal 状态，不依赖提示词写入任何文件。
+**A:** 不需要。v2.1.2 通过 CC 原生标记从 transcript 自动检测 /goal 状态，不依赖提示词写入任何文件。
 </details>
 
 <details>
@@ -240,6 +241,12 @@ scripts/_goal_guard.py (~700 行, 零依赖)
 <summary><strong>Q: 任务真的完成了，会被误拦吗？</strong></summary>
 
 **A:** 不会。任务正常完成时，LLM 语义分析能识别真正的完成（最终报告、测试结果、全面总结）并返回 PASS —— 即使行为信号（无工具、趋势下降）看起来可疑。LLM 被明确指示区分任务正常收尾和提前放弃。
+</details>
+
+<details>
+<summary><strong>Q: 插件自身出错了怎么办？</strong></summary>
+
+**A:** v2.1.2 在入口增加了全局异常兜底。任何未预期的内部异常（文件竞争、磁盘 I/O 异常、状态损坏）都会被捕获，输出合法的 BLOCK 决策让 /goal 继续执行，不会因 Python 错误输出导致 "JSON validation failed" 中断循环。
 </details>
 
 ## 许可证

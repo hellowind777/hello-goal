@@ -1,6 +1,6 @@
 {
   "name": "hello-goal",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Hybrid Guardian for /goal tasks —— 行为结构分析 + LLM 语义分析统一混合判定，语言无关，自动监控 /goal 任务防止非正常终止。三层级联：中断恢复 → API 错误容错 → 行为信号+LLM 语义分析。",
   "author": {
     "name": "hellowind"

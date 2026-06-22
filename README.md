@@ -2,11 +2,11 @@
   <img src="./readme_images/01-hero-banner.svg" alt="hello-goal" width="800">
 </div>
 
-# hello-goal v2.1.1
+# hello-goal v2.1.2
 
 Hybrid Guardian for Claude Code `/goal` tasks. Automatically prevents premature termination via behavioral structure analysis + LLM semantic analysis. Language-agnostic. Zero prompt modification required.
 
-[![Version](https://img.shields.io/badge/version-2.1.1-orange.svg)](./RELEASE_NOTES.md)
+[![Version](https://img.shields.io/badge/version-2.1.2-orange.svg)](./RELEASE_NOTES.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![LINUX DO](https://img.shields.io/badge/LINUX_DO-recognized-0A84FF?logo=linux&logoColor=white)](https://linux.do)
 
@@ -40,7 +40,7 @@ Claude Code's `/goal` has three typical failure modes in long-running tasks:
 2. **Abandonment** — the model wants to quit early due to fatigue, long context, or loss of confidence
 3. **Standard downgrade** — the model silently lowers completion criteria ("good enough", "mostly done")
 
-**hello-goal v2.1.1** uses a single command-type Stop hook with unified hybrid analysis to detect and block these premature terminations, keeping the `/goal` loop running until the task is genuinely complete.
+**hello-goal v2.1.2** uses a single command-type Stop hook with unified hybrid analysis to detect and block these premature terminations, keeping the `/goal` loop running until the task is genuinely complete.
 
 ### v2.1 vs v2.0
 
@@ -64,7 +64,7 @@ Claude Code's `/goal` has three typical failure modes in long-running tasks:
 
 ## The Problem It Solves
 
-| Scenario | Without hello-goal | With hello-goal v2.1.1 |
+| Scenario | Without hello-goal | With hello-goal v2.1.2 |
 |----------|-------------------|---------------------|
 | `/goal` hook error mid-task | Session terminates | Detects abnormal stop_reason → BLOCK |
 | Third-party API error (429/503/etc.) | `/goal` loop dies | Pattern match → auto-recover BLOCK |
@@ -103,13 +103,14 @@ Stop Hook fires
           ├─ Distinguishes genuine completion from premature abandonment
           ├─ BLOCK → continue    PASS → allow stop
           └─ API unavailable → conservative BLOCK
+  └─ Global Exception Guard (v2.1.2): unhandled internal error → BLOCK
 ```
 
 ### Why not keywords/regex
 
 There are 200+ languages. A model can express "I give up" in any of them. Keyword regex is neither exhaustive nor maintainable.
 
-v2.1.1's behavioral analysis **doesn't read text content** — it scores tool call patterns, message length trends, and turn structure from the transcript. These signals are identical in every language. The LLM semantic analysis provides the final decision on all suspicious turns, handling any language natively.
+v2.1.2's behavioral analysis **doesn't read text content** — it scores tool call patterns, message length trends, and turn structure from the transcript. These signals are identical in every language. The LLM semantic analysis provides the final decision on all suspicious turns, handling any language natively.
 
 ## Quick Start
 
@@ -206,7 +207,7 @@ scripts/_goal_guard.py (~700 lines, zero dependencies)
 |------|---------|
 | `plugins/hello-goal/hooks/hooks.json` | Three-hook registration (Stop + SessionStart + PostCompact) |
 | `plugins/hello-goal/scripts/_goal_guard.py` | Hybrid guardian main script |
-| `plugins/hello-goal/.claude-plugin/plugin.json` | Plugin metadata (v2.1.1) |
+| `plugins/hello-goal/.claude-plugin/plugin.json` | Plugin metadata (v2.1.2) |
 | `.claude-plugin/marketplace.json` | Marketplace manifest |
 | `setup.py` | One-click cross-platform installer |
 
@@ -221,7 +222,7 @@ scripts/_goal_guard.py (~700 lines, zero dependencies)
 <details>
 <summary><strong>Q: Do I need to modify my GOAL_PROMPT?</strong></summary>
 
-**A:** No. v2.1.1 auto-detects `/goal` state from CC native markers in the transcript. It does not depend on any status file written by your prompt.
+**A:** No. v2.1.2 auto-detects `/goal` state from CC native markers in the transcript. It does not depend on any status file written by your prompt.
 </details>
 
 <details>
@@ -240,6 +241,12 @@ scripts/_goal_guard.py (~700 lines, zero dependencies)
 <summary><strong>Q: Will it block a genuinely completed task?</strong></summary>
 
 **A:** No. When the task is truly done, the LLM semantic analysis recognizes genuine completion (final report, test results, comprehensive summary) and returns PASS — even if behavioral signals (no tools, trend decline) are elevated. The LLM is explicitly instructed to distinguish task wind-down from premature abandonment.
+</details>
+
+<details>
+<summary><strong>Q: What if the plugin itself hits an unexpected error?</strong></summary>
+
+**A:** v2.1.2 wraps the main handler in a global exception guard. Any unexpected internal error (file race, disk I/O issue, corrupted state) is caught and outputs a valid BLOCK decision — keeping the `/goal` loop running safely rather than crashing with a "JSON validation failed" error that would terminate the loop.
 </details>
 
 ## License

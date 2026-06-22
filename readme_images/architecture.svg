@@ -12,7 +12,7 @@
   </defs>
 
   <!-- Title -->
-  <text x="360" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#333">hello-goal v2.0.3 Hybrid Guardian</text>
+  <text x="360" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#333">hello-goal v2.1.2 Hybrid Guardian</text>
 
   <!-- Stop Event -->
   <rect x="260" y="50" width="200" height="36" rx="6" fill="#4a90d9" stroke="#357abd" stroke-width="1.5"/>
@@ -57,17 +57,14 @@
   <text x="595" y="274" text-anchor="middle" font-size="9" fill="#555">Read-only stall +15%</text>
 
   <!-- Score thresholds -->
-  <rect x="130" y="305" width="130" height="26" rx="6" fill="#e8f5e9" stroke="#4caf50" stroke-width="1.5"/>
-  <text x="195" y="323" text-anchor="middle" font-size="10" fill="#2e7d32" font-weight="bold">≥ 50% → BLOCK</text>
+  <rect x="170" y="305" width="180" height="26" rx="6" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
+  <text x="260" y="323" text-anchor="middle" font-size="10" fill="#e65100" font-weight="bold">score ≥ 0.20 → Phase 3 (LLM)</text>
 
-  <rect x="290" y="305" width="130" height="26" rx="6" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
-  <text x="355" y="323" text-anchor="middle" font-size="10" fill="#e65100" font-weight="bold">20-49% → Phase 3</text>
-
-  <rect x="450" y="305" width="130" height="26" rx="6" fill="#e8f5e9" stroke="#4caf50" stroke-width="1.5"/>
-  <text x="515" y="323" text-anchor="middle" font-size="10" fill="#2e7d32" font-weight="bold">&lt; 20% → PASS</text>
+  <rect x="390" y="305" width="130" height="26" rx="6" fill="#e8f5e9" stroke="#4caf50" stroke-width="1.5"/>
+  <text x="455" y="323" text-anchor="middle" font-size="10" fill="#2e7d32" font-weight="bold">score &lt; 0.20 → PASS</text>
 
   <!-- Phase 3 -->
-  <line x1="355" y1="331" x2="355" y2="350" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="260" y1="331" x2="355" y2="350" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
   <rect x="240" y="352" width="230" height="34" rx="6" fill="#f3e5f5" stroke="#9c27b0" stroke-width="1.5"/>
   <text x="355" y="374" text-anchor="middle" font-size="11" fill="#6a1b9a">Phase 3: LLM Semantic (~10%)</text>
 
@@ -79,10 +76,10 @@
   <text x="355" y="423" text-anchor="middle" font-size="10" fill="#2e7d32" font-weight="bold">Continue → PASS</text>
 
   <rect x="450" y="405" width="130" height="26" rx="6" fill="#fff3e0" stroke="#ff9800" stroke-width="1.5"/>
-  <text x="515" y="423" text-anchor="middle" font-size="10" fill="#e65100" font-weight="bold">API fail → BLOCK</text>
+  <text x="515" y="423" text-anchor="middle" font-size="10" fill="#e65100" font-weight="bold">Fail → BLOCK</text>
 
-  <!-- Phase 4 -->
-  <text x="40" y="465" font-size="10" fill="#888">Phase 4: Loop Protection — stop_hook_active raises threshold to 70%</text>
+  <!-- Phase 1.5: API Error Recovery -->
+  <text x="40" y="465" font-size="10" fill="#888">Phase 1.5: API Error Recovery — 10 error patterns on 3 sources (stop_reason + assistant + transcript)</text>
 
   <!-- Additional hooks -->
   <text x="40" y="485" font-size="10" fill="#888">Aux hooks: SessionStart (cleanup stale state) + PostCompact (refresh detection cache)</text>
