@@ -1,27 +1,20 @@
 #!/usr/bin/env python3
-"""hello-goal v2.2.0 — Global API Recovery + Hybrid /goal Guardian.
-
-Stop Hook 处理顺序（按优先级）:
-  Phase 0 (全局): API 错误模式匹配 → BLOCK，恢复任务
-                  （socket 断开/429/502/503 等第三方大模型瞬时故障，
-                   无论是否 /goal 模式均自动恢复，避免任务永久中断。）
-  Phase 1 (/goal): 非 /goal 会话 → PASS，零干预
-  Phase 2 (/goal): stop_reason 异常 → BLOCK，中断恢复
-  Phase 3 (/goal): 行为信号加权 + LLM 语义分析 → 混合判定
-
-行为信号触发后统一经 LLM 语义分析确认，消除纯行为信号的盲区：
-降速写总结被误判为趋势塌缩、同类批量操被误判为停滞循环等。
-
-零外部依赖。语言无关（行为结构分析 + LLM 自然理解任意语言）。
-
-用法（由 CC hook 系统自动调用）:
-  python ${CLAUDE_PLUGIN_ROOT}/scripts/_goal_guard.py
+"""hello-goal v2.3.1 — Global API Recovery + Hybrid /goal Guardian.[JSON输出加固: os.write(fd=1) 彻底绕过 Windows I/O 编码层 + reason精简]
 """
+
+# ---- 环境初始化 ----
+# 必须在任何可能输出到 stderr/stdout 的操作之前完成
 import json
 import os
 import re
 import sys
 import time
+
+# 抑制 stderr：重定向到 NUL，防止 Python 警告/错误污染 hook 系统的 JSON 解析
+try:
+    sys.stderr = open(os.devnull, "w")
+except Exception:
+    pass
 
 # ============================================================
 # 配置
@@ -34,10 +27,15 @@ STATE_FILE = (
     if PLUGIN_DATA_DIR else ""
 )
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+ANTHROPIC_API_KEY = (
+    os.environ.get("ANTHROPIC_API_KEY", "")
+    or os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+)
+ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "")
 LLM_TIMEOUT = 8
-LLM_MODEL = "claude-3-5-haiku-20241022"
+# 语义分析使用轻量模型：从 CC 环境变量读取，不硬编码默认值
+# —— 不同 API 提供商模型名不同（DeepSeek / Anthropic / 其他），留空则降级为保守 BLOCK
+LLM_MODEL = os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL", "")
 HOOK_START_TIME = time.time()
 HOOK_BUDGET_SEC = 50  # 留 10 秒余量给 JSON 输出和进程清理
 
@@ -69,41 +67,44 @@ _API_ERROR_PATTERNS = [
 # ============================================================
 
 def _read_stdin():
+    """从 stdin 读取 CC 传入的 JSON 上下文。
+    捕获所有可能的解码/解析异常 —— 任何输入问题都以空上下文兜底，
+    不会让 hook 因 stdin 读取失败而崩溃。"""
     try:
         return json.load(sys.stdin)
-    except (json.JSONDecodeError, IOError):
+    except Exception:
         return {}
 
 
+# ---- 核心 I/O ----
+
 def _write_json(data):
-    """输出 JSON 到 stdout——绕过 Windows 控制台编码问题。
-    直接写 UTF-8 字节到 buffer，避免 GBK/cp936 编码损坏中文导致
-    Claude Code hook 系统 JSON 校验失败。"""
+    """通过 os.write(fd=1) 直接向 stdout 文件描述符写入 UTF-8 JSON 行。
+    完全绕过 Python 的 sys.stdout / sys.stdout.buffer —— 消除 Windows 上
+    TextIOWrapper 编码层与 buffer 之间潜在的缓冲不同步问题，确保 CC hook
+    系统始终收到纯净的、单行的合法 JSON。"""
     payload = json.dumps(data, ensure_ascii=False)
+    raw = payload.encode("utf-8") + b"\n"
     try:
-        sys.stdout.buffer.write(payload.encode("utf-8") + b"\n")
+        os.write(1, raw)
     except Exception:
-        # buffer 不可用时回退到 print（ASCII-safe fallback）
-        print(json.dumps(data, ensure_ascii=True))
-    sys.stdout.flush()
+        # fd=1 不可用时回退（极罕见，如 stdin/stdout 被关闭的守护进程）
+        try:
+            sys.stdout.buffer.write(raw)
+            sys.stdout.flush()
+        except Exception:
+            # 最后兜底：ASCII-safe print
+            print(json.dumps(data, ensure_ascii=True))
 
 
 def _block(reason):
     _write_json({"decision": "block", "reason": reason})
-    sys.exit(0)
+    os._exit(0)
 
 
 def _pass(output=None):
     _write_json(output or {})
-    sys.exit(0)
-
-
-def _setup_encoding():
-    for s in (sys.stdout, sys.stderr):
-        try:
-            s.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+    os._exit(0)
 
 
 # ============================================================
@@ -481,6 +482,10 @@ def _llm_check(last_assistant_message, stop_reason, flags=None):
     """
     if not ANTHROPIC_API_KEY:
         return None
+    if not ANTHROPIC_BASE_URL:
+        return None
+    if not LLM_MODEL:
+        return None
     if not last_assistant_message:
         return None
 
@@ -639,9 +644,7 @@ def handle_stop(ctx):
     # Phase 0 (全局): API 错误检测 —— 优先于 /goal 检查，全局响应
     api_error, api_info = _detect_api_error(ctx)
     if api_error:
-        return _block(
-            "[hello-goal] 检测到 API 错误 (" + api_info + ")。任务自动恢复，继续执行。"
-        )
+        return _block("继续")
 
     # Phase 1: /goal 检测，非 /goal 会话后续不再干预
     if not _detect_goal_active(transcript_path, session_id):
@@ -649,10 +652,7 @@ def handle_stop(ctx):
 
     # Phase 2: 中断恢复 —— 非正常结束直接 BLOCK
     if stop_reason != "end_turn":
-        return _block(
-            "[hello-goal] 检测到异常中断 (stop_reason=" + stop_reason + ")。"
-            "/goal 任务继续执行。"
-        )
+        return _block("继续")
 
     # Phase 3: 行为信号 + LLM 语义分析 —— 统一混合判定
     score, flags = _structural_score(transcript_path)
@@ -664,28 +664,16 @@ def handle_stop(ctx):
     # 时间预算保护：剩余时间不足 15 秒则跳过 LLM，保守 BLOCK
     elapsed = time.time() - HOOK_START_TIME
     if elapsed > HOOK_BUDGET_SEC:
-        flag_str = ", ".join(flags.keys()) if flags else "行为异常"
-        return _block(
-            "[hello-goal] 时间预算不足(已耗时" + str(int(elapsed)) + "s)，跳过语义分析，"
-            "保守策略：/goal 任务继续执行。"
-            " (行为信号: " + flag_str + ")"
-        )
+        return _block("继续")
 
     result = _llm_check(last_msg, stop_reason, flags)
 
     if result is True:
-        flag_str = ", ".join(flags.keys()) if flags else "行为异常"
-        return _block(
-            "[hello-goal] 语义分析判定任务可能提前终止"
-            " (行为信号: " + flag_str + ")。"
-            "/goal 任务继续执行。"
-        )
+        return _block("继续")
     elif result is False:
         return _pass()
     else:
-        return _block(
-            "[hello-goal] 语义分析不可用，保守策略：/goal 任务继续执行。"
-        )
+        return _block("继续")
 
 
 def handle_session_start(ctx):
@@ -738,17 +726,21 @@ DISPATCH = {
 
 def main():
     try:
-        _setup_encoding()
         ctx = _read_stdin()
         event = ctx.get("hook_event_name", "")
         handler = DISPATCH.get(event, lambda c: _pass())
         handler(ctx)
     except Exception:
-        # 兜底——任何未预期的异常也输出有效 JSON，避免 hook 系统解析失败
         try:
-            _block("[hello-goal] internal error, blocking to continue /goal task.")
+            # 兜底: 任何未预期异常也输出合法 JSON，避免 hook 系统解析失败
+            _block("继续")
         except Exception:
-            _write_json({"decision": "block", "reason": "hello-goal critical failure"})
+            # 最底层兜底: 直接写 fd=1，确保至少有一行 JSON
+            try:
+                os.write(1, b'{"decision":"block","reason":"hello-goal critical"}\n')
+            except Exception:
+                pass
+            os._exit(0)
 
 
 if __name__ == "__main__":

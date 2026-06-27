@@ -1,5 +1,95 @@
 # Release Notes / 发布记录
 
+## v2.3.1 (2026-06-27)
+
+### JSON 输出加固 + reason 精简 + DeepSeek 兼容 —— Windows I/O 层重构与多 API 提供商适配
+
+对比 v2.2.0 的实质性变更：
+
+**JSON 输出 I/O 层重构（Windows 可靠性修复）：**
+
+- `_write_json()` 输出路径从 `sys.stdout.buffer.write()` + `sys.stdout.flush()` 改为 `os.write(fd=1, raw_bytes)`。直接写文件描述符 1，彻底绕过 Python 的 `sys.stdout` / `sys.stdout.buffer` 多层封装，消除 Windows 上 `TextIOWrapper` 编码层与底层 `BufferedWriter` 之间潜在的缓冲不同步问题。此为 v2.2.0 的 "Stop hook error: JSON validation failed" 报告的根本性修复。
+- 启动时立即将 `sys.stderr` 重定向到 `os.devnull`，防止 `urllib.request` 等标准库的 DeprecationWarning 污染 hook 系统的 JSON 输出流。
+- 进程退出方式从 `sys.exit(0)` 改为 `os._exit(0)`，避免 atexit 回调、finally 块和 `__del__` 清理逻辑产生额外 stdout 输出。
+
+**多 API 提供商兼容（移除硬编码默认值）：**
+
+- `ANTHROPIC_BASE_URL` 默认值从 `"https://api.anthropic.com"` 改为 `""`（空字符串，不设默认值）。API URL 缺失时 `_llm_check()` 返回 `None`，走保守 BLOCK 而非尝试连接错误端点。
+- `LLM_MODEL` 默认值从硬编码 `"claude-3-5-haiku-20241022"` 改为从环境变量 `ANTHROPIC_DEFAULT_HAIKU_MODEL` 读取，缺失时为空。不同 API 提供商（DeepSeek、Anthropic 等）模型名不同，不再假设固定模型。
+- API 密钥读取兼容 `ANTHROPIC_AUTH_TOKEN` 环境变量（原仅读 `ANTHROPIC_API_KEY`）。
+- `_llm_check()` 新增三个前导防护：`ANTHROPIC_BASE_URL`、`LLM_MODEL` 任一缺失均立即返回 `None`，避免在配置不完整时发起 API 调用。
+
+**stdin 异常捕获扩展：**
+
+- `_read_stdin()` 异常捕获从 `(json.JSONDecodeError, IOError)` 扩展为全 `Exception`，覆盖 Windows 上因 cp936/GBK 编码导致的 `UnicodeDecodeError`。任何 stdin 读取失败均以空上下文兜底，不让 hook 因输入问题崩溃。
+
+**BLOCK reason 精简：**
+
+- 所有 `_block()` 调用的 reason 参数统一为 `"继续"`（两字）。原设计的详细诊断信息（"检测到 API 错误 (assistant 消息匹配 \b429\b)。任务自动恢复，继续执行。" 等）会作为 hook feedback 注入 AI 上下文，产生认知干扰。精简为两字后，AI 不被冗余错误细节分散注意力。
+
+**三层 JSON 输出兜底：**
+
+- JSON 输出异常降级链：`os.write(fd=1)` → `sys.stdout.buffer.write()` + `sys.stdout.flush()` → `print(json.dumps(data, ensure_ascii=True))`。每层都覆盖更极端的失败场景（fd 1 关闭、buffer 不可用），确保任意环境下始终能产出一行合法 JSON。
+
+**额外加固：**
+
+- 主入口 `main()` 最底层兜底直接 `os.write(1, b'{...}')`，跳过所有函数调用链。
+- 移除已废弃的 `_setup_encoding()` 函数（`sys.stdout.reconfigure()` 在 Windows 上与新的 `os.write(fd=1)` 路径存在冲突风险）。
+
+**版本号同步：**
+
+- `_goal_guard.py` 模块文档版本号 2.2.0 → 2.3.1
+- `plugin.json` 版本号 2.2.0 → 2.3.1
+- `marketplace.json` 版本号 2.2.0 → 2.3.1
+- `README.md` / `README_CN.md` 版本号 2.2.0 → 2.3.1
+- `01-hero-banner.svg` / `architecture.svg` 版本号 2.2.0 → 2.3.1
+
+---
+
+### JSON Output Hardening + Reason Simplification + DeepSeek Compatibility — Windows I/O Layer Refactor and Multi-Provider Adaptation
+
+Substantive changes compared to v2.2.0:
+
+**JSON Output I/O Layer Refactor (Windows reliability fix):**
+
+- `_write_json()` output path changed from `sys.stdout.buffer.write()` + `sys.stdout.flush()` to `os.write(fd=1, raw_bytes)`. Writing directly to file descriptor 1 completely bypasses Python's `sys.stdout` / `sys.stdout.buffer` multi-layer abstraction, eliminating potential buffer desynchronization between the `TextIOWrapper` encoding layer and the underlying `BufferedWriter` on Windows. This is the root-cause fix for the "Stop hook error: JSON validation failed" reports in v2.2.0.
+- At startup, `sys.stderr` is immediately redirected to `os.devnull`, preventing DeprecationWarnings from standard library modules (e.g. `urllib.request`) from polluting the hook system's JSON output stream.
+- Process exit changed from `sys.exit(0)` to `os._exit(0)`, avoiding any extra stdout output from atexit callbacks, finally blocks, or `__del__` cleanup logic.
+
+**Multi-Provider API Compatibility (removed hardcoded defaults):**
+
+- `ANTHROPIC_BASE_URL` default changed from `"https://api.anthropic.com"` to `""` (empty, no default). When the API URL is absent, `_llm_check()` returns `None` and falls through to conservative BLOCK rather than attempting a connection to the wrong endpoint.
+- `LLM_MODEL` default changed from hardcoded `"claude-3-5-haiku-20241022"` to reading from the `ANTHROPIC_DEFAULT_HAIKU_MODEL` environment variable. If absent, the value is empty. Different API providers (DeepSeek, Anthropic, etc.) use different model names; no single model name is assumed.
+- API key reading now also checks `ANTHROPIC_AUTH_TOKEN` (previously only `ANTHROPIC_API_KEY`).
+- `_llm_check()` gains three pre-guards: if `ANTHROPIC_BASE_URL` or `LLM_MODEL` is missing, immediately returns `None` to avoid making API calls with incomplete configuration.
+
+**stdin Exception Handling Expanded:**
+
+- `_read_stdin()` exception catching expanded from `(json.JSONDecodeError, IOError)` to full `Exception`, covering `UnicodeDecodeError` caused by cp936/GBK encoding mismatches on Windows. Any stdin read failure falls through to an empty context, preventing hook crashes from input issues.
+
+**BLOCK Reason Simplified:**
+
+- All `_block()` call reason parameters unified to `"继续"` (2 characters, "continue"). The previous verbose diagnostic strings (e.g., "Detected API error (assistant message match \b429\b). Auto-recovering task.") were injected as hook feedback into the AI context, causing cognitive distraction. The two-character minimal form eliminates this noise.
+
+**Three-Layer JSON Output Fallback:**
+
+- JSON output exception degradation chain: `os.write(fd=1)` → `sys.stdout.buffer.write()` + `sys.stdout.flush()` → `print(json.dumps(data, ensure_ascii=True))`. Each layer handles progressively more extreme failure scenarios (fd 1 closed, buffer unavailable), ensuring a valid JSON line is always produced in any environment.
+
+**Additional Hardening:**
+
+- The `main()` entry point's deepest fallback directly calls `os.write(1, b'{...}')`, bypassing all function call chains.
+- Removed the obsolete `_setup_encoding()` function (`sys.stdout.reconfigure()` conflicted with the new `os.write(fd=1)` path on Windows).
+
+**Version Sync:**
+
+- `_goal_guard.py` module docstring version 2.2.0 → 2.3.1
+- `plugin.json` version 2.2.0 → 2.3.1
+- `marketplace.json` version 2.2.0 → 2.3.1
+- `README.md` / `README_CN.md` version 2.2.0 → 2.3.1
+- `01-hero-banner.svg` / `architecture.svg` version 2.2.0 → 2.3.1
+
+---
+
 ## v2.2.0 (2026-06-23)
 
 ### API 错误全局自动恢复 —— 无论是否 /goal 模式均响应

@@ -12,7 +12,7 @@
   </defs>
 
   <!-- Title -->
-  <text x="360" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#333">hello-goal v2.2.0 Global API Recovery + Hybrid Guardian</text>
+  <text x="360" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#333">hello-goal v2.3.1 Global API Recovery + Hybrid Guardian</text>
 
   <!-- Stop Event -->
   <rect x="260" y="50" width="200" height="36" rx="6" fill="#4a90d9" stroke="#357abd" stroke-width="1.5"/>

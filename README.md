@@ -2,11 +2,11 @@
   <img src="./readme_images/01-hero-banner.svg" alt="hello-goal" width="800">
 </div>
 
-# hello-goal v2.2.0
+# hello-goal v2.3.1
 
-Global API Recovery + Hybrid Guardian for Claude Code `/goal` tasks. API errors (socket disconnect, 429, 502, 503) auto-recover regardless of `/goal` mode. In `/goal` mode, additionally prevents premature termination via behavioral structure analysis + LLM semantic analysis. Language-agnostic. Zero external dependencies.
+Global API Recovery + Hybrid Guardian for Claude Code `/goal` tasks. API errors (socket disconnect, 429, 502, 503) auto-recover regardless of `/goal` mode. In `/goal` mode, additionally prevents premature termination via behavioral structure analysis + LLM semantic analysis. Language-agnostic. Zero external dependencies. Pure Python standard library.
 
-[![Version](https://img.shields.io/badge/version-2.2.0-orange.svg)](./RELEASE_NOTES.md)
+[![Version](https://img.shields.io/badge/version-2.3.1-orange.svg)](./RELEASE_NOTES.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![LINUX DO](https://img.shields.io/badge/LINUX_DO-recognized-0A84FF?logo=linux&logoColor=white)](https://linux.do)
 
@@ -40,9 +40,22 @@ Claude Code's `/goal` has three typical failure modes in long-running tasks:
 2. **Abandonment** — the model wants to quit early due to fatigue, long context, or loss of confidence
 3. **Standard downgrade** — the model silently lowers completion criteria ("good enough", "mostly done")
 
-Additionally, **API errors** (socket disconnections from third-party LLM providers, 429/502/503) can kill ANY task — `/goal` or not. hello-goal v2.2.0 catches these globally, before any other check, and auto-recovers.
+Additionally, **API errors** (socket disconnections from third-party LLM providers, 429/502/503) can kill ANY task — `/goal` or not. hello-goal v2.3.1 catches these globally, before any other check, and auto-recovers.
 
-**hello-goal v2.2.0** uses a single command-type Stop hook with 4-phase cascaded analysis to detect and block premature terminations.
+**hello-goal v2.3.1** uses a single command-type Stop hook with 4-phase cascaded analysis to detect and block premature terminations. All BLOCK reasons are minimal (`"继续"`) to avoid distracting the AI assistant during recovery.
+
+### v2.3 vs v2.2
+
+| | v2.2 | v2.3 |
+|---|---|---|
+| JSON I/O | `sys.stdout.buffer.write()` + `sys.stdout.flush()` | `os.write(fd=1)` — direct fd write, bypasses Windows encoding layer entirely |
+| stderr | Uncontrolled — Python warnings could pollute hook output | Redirected to `os.devnull` at startup |
+| Process exit | `sys.exit(0)` — may trigger atexit callbacks | `os._exit(0)` — immediate, zero post-output |
+| API defaults | Hardcoded `api.anthropic.com` + `claude-3-5-haiku` | No hardcoded defaults — reads from CC env vars only |
+| API key env | `ANTHROPIC_API_KEY` only | Also reads `ANTHROPIC_AUTH_TOKEN` |
+| stdin errors | Catches `JSONDecodeError` + `IOError` | Catches all `Exception` (incl. `UnicodeDecodeError`) |
+| BLOCK reason | Verbose diagnostic strings (~80 chars) | `"继续"` — 2 characters, minimal |
+| JSON fallback | 1 layer | 3 layers: `os.write(1)` → `sys.stdout.buffer` → `print(ascii)` |
 
 ### v2.2 vs v2.1
 
@@ -61,20 +74,9 @@ Additionally, **API errors** (socket disconnections from third-party LLM provide
 | LLM calls | ~10% of turns (fuzzy zone only) | All suspicious turns (ensures correctness) |
 | Complexity | 4 phases (Phase 2/3/4 with threshold adjustment) | 3 phases (unified Phase 2: signals + LLM) |
 
-### v2.0 vs v1.x
-
-| | v1.x | v2.0 |
-|---|---|---|
-| Detection | Prompt writes `.goal_status.json` | Auto-detected from transcript |
-| Prompt intrusion | Status file write code required | **Zero** — prompt focuses only on task goal |
-| Abandonment detection | None | Structural analysis + LLM semantic fallback |
-| Language support | Marker matching only | All languages (structural analysis is language-agnostic) |
-| Hooks | 1 Stop hook | 3 hooks (Stop + SessionStart + PostCompact) |
-| API error recovery | None | Automatic pattern matching on third-party API errors |
-
 ## The Problem It Solves
 
-| Scenario | Without hello-goal | With hello-goal v2.2.0 |
+| Scenario | Without hello-goal | With hello-goal v2.3.1 |
 |----------|-------------------|---------------------|
 | API error (socket/429/503) in any session | Task permanently interrupted | Phase 0 detects → auto-recover BLOCK |
 | `/goal` hook error mid-task | Session terminates | Detects abnormal stop_reason → BLOCK |
@@ -109,18 +111,20 @@ Stop Hook fires
       ├─ Signal 4: Read-only stall (5 turns no writes) +15%
       ├─ score < 0.20 → PASS (no behavioral concern)
       └─ score ≥ 0.20 → LLM semantic analysis (with behavioral context)
-          ├─ Haiku analyzes last_assistant_message + behavioral signals
+          ├─ Lightweight model analyzes last_assistant_message + behavioral signals
           ├─ Distinguishes genuine completion from premature abandonment
           ├─ BLOCK → continue    PASS → allow stop
           └─ API unavailable → conservative BLOCK
   └─ Global Exception Guard: unhandled internal error → BLOCK
 ```
 
+All BLOCK decisions return reason `"继续"` — minimal, non-distracting feedback to the AI assistant.
+
 ### Why not keywords/regex
 
 There are 200+ languages. A model can express "I give up" in any of them. Keyword regex is neither exhaustive nor maintainable.
 
-v2.2.0's behavioral analysis **doesn't read text content** — it scores tool call patterns, message length trends, and turn structure from the transcript. These signals are identical in every language. The LLM semantic analysis provides the final decision on all suspicious turns, handling any language natively.
+v2.3.1's behavioral analysis **doesn't read text content** — it scores tool call patterns, message length trends, and turn structure from the transcript. These signals are identical in every language. The LLM semantic analysis provides the final decision on all suspicious turns, handling any language natively.
 
 ## Quick Start
 
@@ -197,11 +201,11 @@ Claude Code v2.1.143+ enforces a maximum of 8 consecutive Stop hook blocks. Rais
 
 ```
 hooks/hooks.json
-├── Stop (command, 12s)          ← Core guardian: 4-phase cascaded analysis
+├── Stop (command, 60s)          ← Core guardian: 4-phase cascaded analysis
 ├── SessionStart (command, 5s)   ← Stale state cleanup, session init
 └── PostCompact (command, 3s)    ← Post-compaction detection cache refresh
 
-scripts/_goal_guard.py (~720 lines, zero dependencies)
+scripts/_goal_guard.py (~750 lines, zero dependencies)
 ├── handle_stop()           ← Phase 0-3 main logic
 ├── handle_session_start()  ← State cleanup
 ├── handle_post_compact()   ← Cache refresh with sticky goal_detected
@@ -217,7 +221,7 @@ scripts/_goal_guard.py (~720 lines, zero dependencies)
 |------|---------|
 | `plugins/hello-goal/hooks/hooks.json` | Three-hook registration (Stop + SessionStart + PostCompact) |
 | `plugins/hello-goal/scripts/_goal_guard.py` | Hybrid guardian main script |
-| `plugins/hello-goal/.claude-plugin/plugin.json` | Plugin metadata (v2.2.0) |
+| `plugins/hello-goal/.claude-plugin/plugin.json` | Plugin metadata (v2.3.1) |
 | `.claude-plugin/marketplace.json` | Marketplace manifest |
 | `setup.py` | One-click cross-platform installer |
 
@@ -232,13 +236,13 @@ scripts/_goal_guard.py (~720 lines, zero dependencies)
 <details>
 <summary><strong>Q: Do I need to modify my GOAL_PROMPT?</strong></summary>
 
-**A:** No. v2.2.0 auto-detects `/goal` state from CC native markers in the transcript. It does not depend on any status file written by your prompt.
+**A:** No. v2.3.1 auto-detects `/goal` state from CC native markers in the transcript. It does not depend on any status file written by your prompt.
 </details>
 
 <details>
 <summary><strong>Q: How much does the LLM analysis cost?</strong></summary>
 
-**A:** All turns with any behavioral signal (score ≥ 0.20) trigger LLM analysis. Each Haiku call is ~$0.0005. A 200-turn `/goal` task with behavioral signals on every turn costs about $0.10 total. Turns without signals (score < 0.20) pass instantly with zero LLM cost.
+**A:** All turns with any behavioral signal (score ≥ 0.20) trigger LLM analysis. Each lightweight model call is ~$0.0005. A 200-turn `/goal` task with behavioral signals on every turn costs about $0.10 total. Turns without signals (score < 0.20) pass instantly with zero LLM cost.
 </details>
 
 <details>
@@ -256,7 +260,7 @@ scripts/_goal_guard.py (~720 lines, zero dependencies)
 <details>
 <summary><strong>Q: What if the plugin itself hits an unexpected error?</strong></summary>
 
-**A:** The main handler is wrapped in a global exception guard. Any unexpected internal error (file race, disk I/O issue, corrupted state) is caught and outputs a valid BLOCK decision — keeping the task running safely rather than crashing with a "JSON validation failed" error.
+**A:** The main handler is wrapped in a global exception guard with 3-layer fallback (`os.write(1)` → `sys.stdout.buffer` → `print(ascii)`). Any unexpected internal error outputs a valid BLOCK decision — keeping the task running safely rather than crashing with a "JSON validation failed" error.
 </details>
 
 ## License

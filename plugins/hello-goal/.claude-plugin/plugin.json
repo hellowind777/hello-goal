@@ -1,6 +1,6 @@
 {
   "name": "hello-goal",
-  "version": "2.2.0",
+  "version": "2.3.1",
   "description": "Global API Recovery + Hybrid /goal Guardian —— API 错误（socket断开/429/502/503）无论是否 /goal 模式均自动恢复；/goal 模式下叠加异常中断恢复 + 行为信号 + LLM 语义分析混合判定。语言无关，零外部依赖。",
   "author": {
     "name": "hellowind"
