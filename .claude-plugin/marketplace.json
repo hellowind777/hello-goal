@@ -10,7 +10,7 @@
       "name": "hello-goal",
       "source": "./plugins/hello-goal",
       "description": "全局 API 恢复 + /goal 混合守护插件 —— API 错误无论是否 /goal 模式均自动恢复；/goal 模式下叠加中断恢复 + 行为信号+LLM 语义分析混合判定。",
-      "version": "2.3.4",
+      "version": "2.3.5",
       "strict": false
     }
   ]

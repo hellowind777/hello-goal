@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hello-goal v2.3.4 — Global API Recovery + Hybrid /goal Guardian.
+"""hello-goal v2.3.5 — Global API Recovery + Hybrid /goal Guardian.
 
 硬编码 JSON 输出 —— 最终 stdout 输出永远是代码写死的合法 JSON，
 LLM 语义分析只影响内部决策分支，绝不直接或间接出现在 hook 的 stdout 上。

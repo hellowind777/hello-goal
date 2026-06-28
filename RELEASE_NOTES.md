@@ -1,5 +1,51 @@
 # Release Notes / 发布记录
 
+## v2.3.5 (2026-06-28)
+
+### StopFailure 安全网兜底 —— 原生评估器 JSON 失败时自动接力 BLOCK
+
+对比 v2.3.3 的实质性变更：
+
+**StopFailure 兜底机制：**
+
+- 新增 `_goal_failure.py`（6 行）：纯硬编码 JSON 输出，任何 Stop hook 失败时无条件返回 BLOCK。不读 stdin，不读 transcript，不调 LLM，零外部依赖。
+- `hooks.json` 新增 `StopFailure` 事件注册（3s timeout）。CC 的 `StopFailure` 事件仅在 Stop hook 执行失败时触发——正常运行时完全不干预。
+- 工作机制：CC 原生 /goal 评估器输出非 JSON 文本导致 JSON 校验失败 → `StopFailure` 事件触发 → `_goal_failure.py` 接力 BLOCK → 任务继续。解决 v2.3.3 已知的"原生评估器 JSON 校验失败导致 hello-goal 的 BLOCK 被忽略"问题。
+
+**文档更新：**
+
+- README.md / README_CN.md 全面更新：新增 StopFailure 架构说明、文件说明、FAQ 更新。
+
+**版本号同步：**
+
+- `_goal_guard.py` / `_goal_failure.py` 模块文档版本号 → 2.3.5
+- `plugin.json` / `marketplace.json` 版本号 → 2.3.5
+- `01-hero-banner.svg` / `architecture.svg` 版本号 → 2.3.5
+
+---
+
+### StopFailure Safety Net — Auto BLOCK on Native Evaluator JSON Failure
+
+Substantive changes compared to v2.3.3:
+
+**StopFailure safety net mechanism:**
+
+- Added `_goal_failure.py` (6 lines): pure hardcoded JSON output, unconditionally returns BLOCK on any Stop hook failure. No stdin reading, no transcript analysis, no LLM calls, zero external dependencies.
+- `hooks.json` added `StopFailure` event registration (3s timeout). CC's `StopFailure` event only fires when a Stop hook execution fails — zero interference during normal operation.
+- Mechanism: CC native /goal evaluator produces non-JSON text → JSON validation fails → `StopFailure` event fires → `_goal_failure.py` relays BLOCK → task continues. Fixes the known v2.3.3 issue where "native evaluator JSON validation failure causes hello-goal's BLOCK to be ignored".
+
+**Documentation update:**
+
+- README.md / README_CN.md comprehensively updated: StopFailure architecture, file listing, FAQ update.
+
+**Version sync:**
+
+- `_goal_guard.py` / `_goal_failure.py` module docstring version → 2.3.5
+- `plugin.json` / `marketplace.json` version → 2.3.5
+- `01-hero-banner.svg` / `architecture.svg` version → 2.3.5
+
+---
+
 ## v2.3.3 (2026-06-28)
 
 ### JSON 输出回退 print() 通道 + 硬编码原则 —— 修复与 CC 原生评估器 JSON 校验冲突

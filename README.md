@@ -2,11 +2,11 @@
   <img src="./readme_images/01-hero-banner.svg" alt="hello-goal" width="800">
 </div>
 
-# hello-goal v2.3.3
+# hello-goal v2.3.5
 
 Global API Recovery + Hybrid Guardian for Claude Code `/goal` tasks. API errors (socket disconnect, 429, 502, 503) auto-recover regardless of `/goal` mode. All hook stdout JSON is hardcoded — LLM semantic analysis only affects internal decision branches, never touches stdout. Language-agnostic. Zero external dependencies. Pure Python standard library.
 
-[![Version](https://img.shields.io/badge/version-2.3.3-orange.svg)](./RELEASE_NOTES.md)
+[![Version](https://img.shields.io/badge/version-2.3.5-orange.svg)](./RELEASE_NOTES.md)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![LINUX DO](https://img.shields.io/badge/LINUX_DO-recognized-0A84FF?logo=linux&logoColor=white)](https://linux.do)
 
@@ -92,7 +92,7 @@ Unlike CC's native `/goal` evaluator (which may output non-JSON text when using 
 
 ## The Problem It Solves
 
-| Scenario | Without hello-goal | With hello-goal v2.3.3 |
+| Scenario | Without hello-goal | With hello-goal v2.3.5 |
 |----------|-------------------|---------------------|
 | API error (socket/429/503) in any session | Task permanently interrupted | Phase 0 detects → auto-recover BLOCK |
 | `/goal` hook error mid-task | Session terminates | Detects abnormal stop_reason → BLOCK |
@@ -220,6 +220,7 @@ Claude Code v2.1.143+ enforces a maximum of 8 consecutive Stop hook blocks. Rais
 ```
 hooks/hooks.json
 ├── Stop (command, 30s)          ← Core guardian: 4-phase cascaded analysis
+├── StopFailure (command, 3s)    ← Safety net: native evaluator JSON failure → auto BLOCK
 ├── SessionStart (command, 5s)   ← Stale state cleanup, session init
 └── PostCompact (command, 3s)    ← Post-compaction detection cache refresh
 
@@ -231,15 +232,19 @@ scripts/_goal_guard.py (~730 lines, zero dependencies)
 ├── _structural_score()     ← Behavioral signal weighting (4 signals)
 ├── _detect_api_error()     ← API error pattern matching (11 patterns, 3 sources)
 └── _llm_check()            ← LLM semantic analysis with behavioral context (urllib)
+
+scripts/_goal_failure.py (6 lines, zero dependencies)
+└── StopFailure handler     ← Unconditional BLOCK on any hook failure
 ```
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `plugins/hello-goal/hooks/hooks.json` | Three-hook registration (Stop + SessionStart + PostCompact) |
-| `plugins/hello-goal/scripts/_goal_guard.py` | Hybrid guardian main script |
-| `plugins/hello-goal/.claude-plugin/plugin.json` | Plugin metadata (v2.3.3) |
+| `plugins/hello-goal/hooks/hooks.json` | Four-hook registration (Stop + StopFailure + SessionStart + PostCompact) |
+| `plugins/hello-goal/scripts/_goal_guard.py` | Hybrid guardian main script (full analysis) |
+| `plugins/hello-goal/scripts/_goal_failure.py` | StopFailure safety net (6 lines, unconditional BLOCK) |
+| `plugins/hello-goal/.claude-plugin/plugin.json` | Plugin metadata (v2.3.5) |
 | `.claude-plugin/marketplace.json` | Marketplace manifest |
 | `setup.py` | One-click cross-platform installer |
 
@@ -266,7 +271,7 @@ scripts/_goal_guard.py (~730 lines, zero dependencies)
 <details>
 <summary><strong>Q: Does this conflict with CC's native /goal evaluator?</strong></summary>
 
-**A:** Both run in parallel as separate stop hooks. hello-goal v2.3.3 uses `print()` through `sys.stdout` to ensure CC captures its hardcoded JSON output independently. When the native evaluator produces non-JSON text (common with third-party LLMs like DeepSeek), hello-goal's JSON output remains valid and independently verifiable. However, CC's internal hook batch processing means a JSON validation error from the native evaluator may still affect the batch as a whole — this is a CC-level architecture limitation.
+**A:** Both run in parallel as separate stop hooks. When the native evaluator produces non-JSON text (common with third-party LLMs like DeepSeek), CC reports "Stop hook error: JSON validation failed". hello-goal v2.3.5 addresses this with a **StopFailure safety net**: a separate 6-line hook script that fires only when any Stop hook fails, unconditionally returning BLOCK to keep the task running. This ensures the native evaluator's JSON errors cannot permanently interrupt a `/goal` task.
 </details>
 
 <details>
