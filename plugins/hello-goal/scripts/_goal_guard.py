@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""hello-goal v2.3.8 —— StopFailure API 错误恢复 + Hybrid /goal Guardian.
+"""hello-goal v2.3.9 —— exit 2 原生 BLOCK 信号 + StopFailure API 恢复 + /goal 守护。
+
+BLOCK 使用 exit code 2 + stderr reason（CC 原生 block 信号，不参与 JSON 校验）。
+与 CC 原生 /goal 评估器并行时不受 "JSON validation failed" 影响。
+
+PASS 使用 exit 0 + 空 JSON `{}`（保持兼容性）。
 
 双通道 API 错误恢复:
-  StopFailure 事件 (CC-level 错误): socket断开/429/503/认证失败等 → _goal_failure.py 无条件 BLOCK
-  Stop 事件 Phase 0 (消息级错误): assistant 消息/transcript 中的 API 错误 → 5 源检测 → BLOCK
+  StopFailure: CC-level 错误 (socket/429/503) → exit 2 BLOCK
+  Stop Phase 0: 消息级错误 (异常 sr/短消息含错误/system transcript) → exit 2 BLOCK
 
-/goal 守护: Phase 1-3 混合判定（异常中断恢复 + 行为信号 + LLM 语义分析）
-
-硬编码 JSON 输出 —— 最终 stdout 输出永远是代码写死的合法 JSON，
-LLM 语义分析只影响内部决策分支，绝不直接或间接出现在 hook 的 stdout 上。
+/goal 守护: Phase 1-3 混合判定 → exit 2 BLOCK
 """
 import json
 import os
@@ -203,13 +205,21 @@ def _setup_encoding():
 
 
 def _block(reason):
-    """阻止 CC 退出，任务继续。输出硬编码 JSON —— 绝不依赖 LLM 生成。"""
-    print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
-    sys.exit(0)
+    """阻止 CC 退出，任务继续。exit code 2 + stderr reason。
+
+    使用 exit code 2 而非 JSON stdout 的原因：
+    exit 2 是 CC 原生的 "block" 信号，不需要 JSON 解析。
+    当与 CC 原生 /goal 评估器（第三方 LLM 可能输出非 JSON）并行运行时，
+    exit 2 不受 JSON validation failed 影响，可独立生效。
+    """
+    sys.stderr.write(reason)
+    sys.exit(2)
 
 
 def _pass(output=None):
-    """放行，不干预 CC。输出空 JSON 对象 —— 最简格式，最大兼容性。"""
+    """放行，不干预 CC。exit 0 + 空 JSON。
+    PASS 保持传统 JSON 输出以确保最大兼容性（部分 CC 版本可能要求）。
+    """
     print(json.dumps(output or {}, ensure_ascii=False))
     sys.exit(0)
 
